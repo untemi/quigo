@@ -1,22 +1,26 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/theme"
 	"github.com/sqweek/dialog"
+	"github.com/tidwall/gjson"
 	"golang.design/x/clipboard"
 )
 
 var APIKEY string
 
-const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key="
+const (
+	url     = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="
+	payload = `{"contents": [{"parts": [{"text": "%s : %s"}]}]}`
+)
 
 func main() {
 	myApp := app.New()
@@ -55,69 +59,26 @@ func main() {
 	myWindow.ShowAndRun()
 }
 
-func handle(value string, prompt string) (respond string, err error, moreError error) {
-	// Define request payload
-	payload := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{
-				"parts": []map[string]interface{}{
-					{
-						"text": prompt + " : " + value,
-					},
-				},
-			},
-		},
-	}
-
-	// Convert payload to JSON
-	jsonPayload, err := json.Marshal(payload)
+func handle(value string, prompt string) (respond string, err error) {
+	req, err := http.NewRequest(
+		"POST",
+		url+config.Apikey,
+		strings.NewReader(fmt.Sprintf(payload, prompt, value)),
+	)
 	if err != nil {
-		return "", errors.New("Error marshalling JSON"), err
+		return "", err
 	}
 
-	// Create HTTP request
-	req, err := http.NewRequest("POST", url+config.Apikey, bytes.NewBuffer(jsonPayload))
+	req.Header.Add("content-type", "application/json")
+
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", errors.New("Error creating request"), err
+		return "", err
 	}
 
-	req.Header.Set("Content-Type", "application/json")
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
 
-	// Send HTTP request
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", errors.New("Error sending request"), err
-	}
-	defer resp.Body.Close()
-
-	// Read response body
-	var result map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
-		return "", errors.New("Error decoding response"), err
-	}
-
-	// Access and print generated content
-	candidates, ok := result["candidates"].([]interface{})
-	if !ok || len(candidates) == 0 {
-		return "", errors.New("Error : No candidates found in response"), err
-	}
-
-	content, ok := candidates[0].(map[string]interface{})["content"].(map[string]interface{})
-	if !ok {
-		return "", errors.New("Error : No content found in response"), err
-	}
-
-	parts, ok := content["parts"].([]interface{})
-	if !ok || len(parts) == 0 {
-		return "", errors.New("Error : No parts found in response"), err
-	}
-
-	generatedText, ok := parts[0].(map[string]interface{})["text"].(string)
-	if !ok {
-		return "", errors.New("Error : No text found in response"), err
-	}
-
-	return generatedText, nil, nil
+	generatedText := gjson.Get(string(body), "candidates.0.content.parts.0.text").String()
+	return generatedText, nil
 }

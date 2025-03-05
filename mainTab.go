@@ -57,10 +57,10 @@ func mainTab(window fyne.Window, app fyne.App) *fyne.Container {
 		confirmBtn.Disable()
 
 		value := input.Text
-		respond, err, merr := handle(value, config.Prompts[combo.Selected].Text)
+		respond, err := handle(value, config.Prompts[combo.Selected].Text)
 
 		if err != nil {
-			log.Println(err, " : ", merr)
+			log.Println("ERROR : ", err)
 
 			if window.Canvas().Focused() != nil {
 				dialog.Message("%s", err).Title("Error").Error()
